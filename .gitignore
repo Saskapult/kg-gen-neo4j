@@ -173,6 +173,6 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-scraped_data
+scraped_data/*
 *.env
 cached_graph.json
