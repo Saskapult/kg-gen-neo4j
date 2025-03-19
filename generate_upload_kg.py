@@ -17,16 +17,16 @@ from neo4j import GraphDatabase
 # 
 
 
-# # Neo4j information
-# neo4j_url = "neo4j://localhost:7687"
-# neo4j_user = "neo4j"
-# neo4j_pass = "no_password"
-# neo4j_base = "neo4j"
 # Neo4j information
-neo4j_url = "neo4j://localhost:8000"
-neo4j_user = "postgres"
-neo4j_pass = "pass"
-neo4j_base = "db"
+neo4j_url = "neo4j://localhost:7687"
+neo4j_user = "neo4j"
+neo4j_pass = "no_password"
+neo4j_base = "neo4j"
+# # Neo4j information
+# neo4j_url = "neo4j://localhost:8000"
+# neo4j_user = "postgres"
+# neo4j_pass = "pass"
+# neo4j_base = "db"
 
 # openai/o1-mini gives weird errors that I do not know how to solve
 # It might be okay to run this once 
