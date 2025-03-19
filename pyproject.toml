@@ -1,0 +1,13 @@
+[project]
+name = "kg-gen-neo4j"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+	"neo4j",
+	"kg-gen",
+	# "psycopg2-binary", 
+	# "fastapi[standard]", 
+	# "pydantic",
+]

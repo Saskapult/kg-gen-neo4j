@@ -1,0 +1,15 @@
+
+services:
+  postgres:
+    image: apache/age
+    container_name: age
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "no_password"
+      POSTGRES_DB: "db"
+    ports:
+      # - "5455:5432"
+      - "5432:5432"
+      - "5455:5455"
+      #- "5455:7455"
+
