@@ -18,10 +18,10 @@ from neo4j import GraphDatabase
 
 
 # Neo4j information
-neo4j_url = "neo4j://localhost:7687"
-neo4j_user = "neo4j"
-neo4j_pass = "no_password"
-neo4j_base = "neo4j"
+neo4j_url = os.getenv("DB_HOST", "neo4j://localhost:7687")
+neo4j_user = os.getenv("DB_USER", "neo4j")
+neo4j_pass = os.getenv("DB_PASSWORD", "no_password")
+neo4j_base = os.getenv("DB_DATABASE", "neo4j")
 # # Neo4j information
 # neo4j_url = "neo4j://localhost:8000"
 # neo4j_user = "postgres"
