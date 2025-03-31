@@ -4,7 +4,8 @@ import sys
 import os
 from kg_gen import KGGen, Graph
 import json 
-from neo4j import GraphDatabase
+# from neo4j import GraphDatabase
+from post4j import GraphDatabase
 
 
 # 
@@ -18,15 +19,13 @@ from neo4j import GraphDatabase
 
 
 # Neo4j information
-neo4j_url = os.getenv("DB_HOST", "neo4j://localhost:7687")
-neo4j_user = os.getenv("DB_USER", "neo4j")
+neo4j_url = os.getenv("DB_HOST", "localhost:5432")
+neo4j_user = os.getenv("DB_USER", "postgres")
+neo4j_base = os.getenv("DB_DATABASE", "db")
+# neo4j_url = os.getenv("DB_HOST", "neo4j://localhost:7687")
+# neo4j_user = os.getenv("DB_USER", "neo4j")
 neo4j_pass = os.getenv("DB_PASSWORD", "no_password")
-neo4j_base = os.getenv("DB_DATABASE", "neo4j")
-# # Neo4j information
-# neo4j_url = "neo4j://localhost:8000"
-# neo4j_user = "postgres"
-# neo4j_pass = "pass"
-# neo4j_base = "db"
+# neo4j_base = os.getenv("DB_DATABASE", "neo4j")
 
 # openai/o1-mini gives weird errors that I do not know how to solve
 # It might be okay to run this once 
@@ -125,6 +124,9 @@ def verify_neo_contents(graph):
 		)
 		print(f"{len(records)} records")
 		assert len(records) >= 1
+		print(records[0].data()) #list obj attr -> val
+		print(summary) # obj
+		print(keys) # id
 
 
 def main():
