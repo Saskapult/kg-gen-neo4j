@@ -3,6 +3,7 @@ from kg_gen import KGGen, Graph
 import json 
 import os
 from litellm import completion
+import argparse
 
 db_url = os.getenv("DB_HOST", "neo4j://localhost:7687")
 db_user = os.getenv("DB_USER", "neo4j")
@@ -122,6 +123,7 @@ def neighbour_based_subgraph(query, eg, driver):
 			# The relationship is returned as a list, but it only has one element
 			gneiq.append([e, rel[0], ep])
 			# How semantic relevance? 
+			# It seem to be based on the application, see MindMap_revised.py line 638
 			# if is_relevant(ep):
 			# 	ep_neighbours = """
 			# 	MATCH (ep:Entity {id: ep})--{1}(neighbours:Entity)
@@ -207,9 +209,10 @@ def dalk_query(query, kg, driver, completion_fn):
 	gpathq = path_based_subgraph(eg, driver)
 	gneiq = neighbour_based_subgraph(query, eg, driver)
 	
-	# Using both to see what happens
 	pathstuff = path_evidence(query, gpathq, 5, completion_fn)
-	neighbourstuff = None # Not described in the paper?
+	# Not described in the paper?
+	# MindMap_revised.py uses different prompts than the paper too 
+	neighbourstuff = None 
 
 	panswer = f"""
 		Question: {q}
@@ -235,6 +238,11 @@ def dalk_query(query, kg, driver, completion_fn):
 
 
 def main():
+	parser = argparse.ArgumentParser()
+	parser.add_argument("-u", "--upload")
+	parser.add_argument("-q", "--query")
+	args = parser.parse_args()
+
 	kg = KGGen(
 		model=kg_gen_model,
 	)
@@ -244,11 +252,14 @@ def main():
 		messages=[{"content": q,"role": "user"}]
 	)
 
-	# import_graph("cached_graph.json")
-
 	with GraphDatabase.driver(db_url, auth=(db_user, db_pass)) as driver:
 		driver.verify_connectivity()
-		dalk_query("What partners does FEMA have?", kg, driver, completion_fn)
+
+		if args.upload:
+			import_graph(args.upload)
+
+		if args.query:
+			dalk_query(args.query, kg, driver, completion_fn)
 
 
 if __name__ == "__main__":
