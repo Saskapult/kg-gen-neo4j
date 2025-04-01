@@ -42,10 +42,6 @@ def import_graph(graph_path):
 				database_=db_base,
 			)
 	
-		# I am unsure of how to encode the relation names into the edges
-		# The driver will not allow reationships to be passed as parameters 
-		# When I add them manually I need to get around the spaces 
-		# For now I will just replace the sapces with underscores
 		for i, (a, r, b) in enumerate(graph.relations):
 			print(f"Write relation {i+1}/{len(graph.relations)} ({a} ~ {r} ~ {b})")
 			driver.execute_query(
@@ -194,12 +190,11 @@ def path_evidence(q, gpathq, k, completion_fn):
 def dalk_query(query, kg, driver, completion_fn):
 	q = query
 	print(f"query: '{q}'")
-	# qg = kg.generate(
-	# 	input_data=q,
-	# )
-	# e = list(qg.entities)
-	e = ['partners', 'FEMA']
-	# print(f"entities: {e}")
+	qg = kg.generate(
+		input_data=q,
+	)
+	e = list(qg.entities)
+	print(f"entities: {e}")
 
 	# Compute he
 	# he = [st_model.encode(entity) for entity in e]
@@ -242,7 +237,6 @@ def dalk_query(query, kg, driver, completion_fn):
 def main():
 	kg = KGGen(
 		model=kg_gen_model,
-		api_key=os.getenv("KG_GEN_API_KEY", ""),
 	)
 
 	completion_fn = lambda q: completion(
@@ -250,12 +244,11 @@ def main():
 		messages=[{"content": q,"role": "user"}]
 	)
 
+	# import_graph("cached_graph.json")
+
 	with GraphDatabase.driver(db_url, auth=(db_user, db_pass)) as driver:
 		driver.verify_connectivity()
 		dalk_query("What partners does FEMA have?", kg, driver, completion_fn)
-	# import_graph("cached_graph.json")
-
-
 
 
 if __name__ == "__main__":
