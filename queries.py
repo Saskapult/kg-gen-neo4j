@@ -2,6 +2,7 @@ from neo4j import GraphDatabase
 from kg_gen import KGGen, Graph
 import json 
 import os
+from pprint import pprint
 
 db_url = os.getenv("DB_HOST", "neo4j://localhost:7687")
 db_user = os.getenv("DB_USER", "neo4j")
@@ -59,17 +60,15 @@ def import_graph(graph_path):
 	print("Graph imported!")
 
 
-def dalk_query(query):
-	# Coarse-grained Knowledge Sample
+def dalk_query(query, kg, driver):
 	q = query
-	kg = KGGen(
-		model=kg_gen_model,
-		api_key=os.getenv("OPENAI_API_KEY", ""),
-	)
-	qg = kg.generate(
-		input_data=q,
-	)
-	e = qg.entities
+	print(f"query: '{q}'")
+	# qg = kg.generate(
+	# 	input_data=q,
+	# )
+	# e = list(qg.entities)
+	e = ['partners', 'FEMA']
+	# print(f"entities: {e}")
 
 	# Compute he
 	# he = [st_model.encode(entity) for entity in e]
@@ -84,21 +83,47 @@ def dalk_query(query):
 	e1 = eg[0]
 	candidates = eg[1:]
 	while len(candidates) != 0:
-		neighbours = """
-		MATCH p = ALL SHORTEST (e1:Entity {id: "FEMA"})-[r]-{1,2}(neighbours:Entity)
-		RETURN neighbours.id AS id, [e in r | TYPE(e)] AS edges, [n in nodes(p) | n.id] AS nodes
-		"""
-		for e2 in candidates:
-			if e2 in neighbours:
-				segment.append((e1, "", e2))
+		print(f"e1: '{e1}'")
+		print(f"candidates: {candidates}")
+
+		neighbours, summary, _ = driver.execute_query("""
+			MATCH p = ALL SHORTEST (e1:Entity {id: $e1})-[r]-{1,2}(neighbours:Entity)
+			RETURN neighbours.id AS id, [e in r | TYPE(e)] AS edges, [n in nodes(p) | n.id] AS nodes
+			ORDER BY length(p)
+			""",
+			e1=e1,
+		)
+		for e2, edges, nodes in neighbours:
+			# if e2 != e1:
+			# 	print(e2, edges, nodes)
+			if e2 != e1 and e2 in candidates:
+				print(f"path to '{e2}'")
+
+				# Interleave lists
+				for n, e in zip(nodes, edges):
+					segment.append(n)
+					segment.append(e)
+				segment.append(nodes[len(nodes)-1])
+
+				print(" -> ".join(segment))
+
 				e1 = e2
 				candidates.remove(e2)
 				break
+
 		# Not found in k hops
-		gpathq.append(segment)
-		e1 = candidates[0]
-		candidates = candidates[1:]
-	gpathq.append(segment) # might result in an added empty list to gpathq
+		if len(candidates) != 0:
+			print("New segment")
+			gpathq.append(segment)
+			e1 = candidates[0]
+			candidates = candidates[1:]
+	gpathq.append(segment)
+
+	print("Path-based sub-graph:")
+	for path in gpathq:
+		print(" -> ".join(path))
+
+	return
 
 	gneiq = []
 	for e in eg:
@@ -116,6 +141,11 @@ def dalk_query(query):
 				for e_nei in ep_neighbours:
 					gneiq.append((e_nei, "", ep))
 	
+	print("Neighbour-based sub-graph:")
+	for path in gneiq:
+		print(" -> ".join(path))
+
+
 	# Filtering examples in appendix B and C 			
 
 
@@ -129,7 +159,14 @@ def dalk_query(query):
 
 
 def main():
-	import_graph("cached_graph.json")
+	kg = KGGen(
+		model=kg_gen_model,
+		api_key=os.getenv("KG_GEN_API_KEY", ""),
+	)
+	with GraphDatabase.driver(db_url, auth=(db_user, db_pass)) as driver:
+		driver.verify_connectivity()
+		dalk_query("What partners does FEMA have?", kg, driver)
+	# import_graph("cached_graph.json")
 
 
 
