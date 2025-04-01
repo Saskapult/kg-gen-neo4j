@@ -60,24 +60,7 @@ def import_graph(graph_path):
 	print("Graph imported!")
 
 
-def dalk_query(query, kg, driver):
-	q = query
-	print(f"query: '{q}'")
-	# qg = kg.generate(
-	# 	input_data=q,
-	# )
-	# e = list(qg.entities)
-	e = ['partners', 'FEMA']
-	# print(f"entities: {e}")
-
-	# Compute he
-	# he = [st_model.encode(entity) for entity in e]
-	# Find links with similarity to hg
-	# Find of like this but you extract the one with the highest similarity
-	# eg = st_model.similairties(he, hg)
-	# We don't actually need to do that I think
-	eg = e 
-
+def path_based_subgraph(eg, driver):
 	gpathq = []
 	segment = []
 	e1 = eg[0]
@@ -122,7 +105,11 @@ def dalk_query(query, kg, driver):
 	print("Path-based sub-graph:")
 	for path in gpathq:
 		print(" -> ".join(path))
+	
+	return gpathq
 
+
+def neighbour_based_subgraph(query, eg, driver):
 	gneiq = []
 	for e in eg:
 		print(f"neighbours of {e}")
@@ -149,7 +136,30 @@ def dalk_query(query, kg, driver):
 	print("Neighbour-based sub-graph:")
 	for path in gneiq:
 		print(" -> ".join(path))
+	
+	return gneiq
 
+
+def dalk_query(query, kg, driver):
+	q = query
+	print(f"query: '{q}'")
+	# qg = kg.generate(
+	# 	input_data=q,
+	# )
+	# e = list(qg.entities)
+	e = ['partners', 'FEMA']
+	# print(f"entities: {e}")
+
+	# Compute he
+	# he = [st_model.encode(entity) for entity in e]
+	# Find links with similarity to hg
+	# Find of like this but you extract the one with the highest similarity
+	# eg = st_model.similairties(he, hg)
+	# We don't actually need to do that I think
+	eg = e 
+
+	gpathq = path_based_subgraph(eg, driver)
+	gneiq = neighbour_based_subgraph(query, eg, driver)
 
 	# Filtering examples in appendix B and C 			
 
