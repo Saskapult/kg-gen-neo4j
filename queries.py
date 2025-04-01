@@ -2,7 +2,7 @@ from neo4j import GraphDatabase
 from kg_gen import KGGen, Graph
 import json 
 import os
-from pprint import pprint
+from litellm import completion
 
 db_url = os.getenv("DB_HOST", "neo4j://localhost:7687")
 db_user = os.getenv("DB_USER", "neo4j")
@@ -10,6 +10,7 @@ db_pass = os.getenv("DB_PASSWORD", "no_password")
 db_base = os.getenv("DB_DATABASE", "neo4j")
 
 kg_gen_model = os.getenv("KG_GEN_MODEL", "openai/gpt-4o-mini")
+rag_model = os.getenv("RAG_MODEL", "openai/gpt-4o-mini")
 
 
 # Imports a graph into the database
@@ -140,7 +141,57 @@ def neighbour_based_subgraph(query, eg, driver):
 	return gneiq
 
 
-def dalk_query(query, kg, driver):
+def path_evidence(q, gpathq, k, completion_fn):
+	gq_str = "\n".join(["->".join(v) for v in gpathq])
+	# Table 15
+	pself = f"""
+		There is a question and some knowledge graph. The knowledge graphs follow entity->relationship->entity list format.
+		Graph: 
+		{gq_str}
+
+		Question:
+		{q}
+
+		Please rerank the knowledge graph and output at most {k} important and relevant triples for solving the given question. Output the reranked knowledge in the following format:
+		{"\n".join([f"Reranked Triple{i+1}: xxx ——>xxx" for i in range(0, k)])}
+
+		Answer:
+	""".replace("\t", "")
+
+	print("pself:")
+	print(pself)
+	print()
+
+	gselfq = completion_fn(pself).choices[0].message.content
+
+	# Table 16
+	pinference = f"""
+		There are some knowledge graph paths. They follow entity->relationship->entity format.
+
+		{gselfq}
+
+		Use the knowledge graph information. Try to convert them to natural language, respectively.
+		Use single quotation marks for entity name and relation name.
+		And name them as Path-based Evidence 1, Path-based Evidence 2,...
+
+		Output:
+	""".replace("\t", "")
+
+	print("pinference:")
+	print(pinference)
+	print()
+
+	# This is gathered to be the output because it is used in table 17
+	a = completion_fn(pinference).choices[0].message.content
+
+	print("a:")
+	print(a)
+	print()
+
+	return a
+
+
+def dalk_query(query, kg, driver, completion_fn):
 	q = query
 	print(f"query: '{q}'")
 	# qg = kg.generate(
@@ -160,17 +211,32 @@ def dalk_query(query, kg, driver):
 
 	gpathq = path_based_subgraph(eg, driver)
 	gneiq = neighbour_based_subgraph(query, eg, driver)
+	
+	# Using both to see what happens
+	pathstuff = path_evidence(query, gpathq, 5, completion_fn)
+	neighbourstuff = None # Not described in the paper?
 
-	# Filtering examples in appendix B and C 			
+	panswer = f"""
+		Question: {q}
 
+		You have some medical knowledge information in the following:
+		###{pathstuff}
+		###{neighbourstuff}
 
+		Answer: Let's think step by step:
+	""".replace("\t", "")
 
-	# Similarity base to connect with g 
-	# Semantic sim to get dense embeddings 
-	# Cosine sim 
+	print("panswer:")
+	print(panswer)
+	print()
 
-	# Path-based 
+	answer = completion_fn(panswer).choices[0].message.content
 
+	print("answer:")
+	print(answer)
+	print()	
+
+	return answer
 
 
 def main():
@@ -178,9 +244,15 @@ def main():
 		model=kg_gen_model,
 		api_key=os.getenv("KG_GEN_API_KEY", ""),
 	)
+
+	completion_fn = lambda q: completion(
+		model=rag_model,
+		messages=[{"content": q,"role": "user"}]
+	)
+
 	with GraphDatabase.driver(db_url, auth=(db_user, db_pass)) as driver:
 		driver.verify_connectivity()
-		dalk_query("What partners does FEMA have?", kg, driver)
+		dalk_query("What partners does FEMA have?", kg, driver, completion_fn)
 	# import_graph("cached_graph.json")
 
 
