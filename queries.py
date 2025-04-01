@@ -123,23 +123,28 @@ def dalk_query(query, kg, driver):
 	for path in gpathq:
 		print(" -> ".join(path))
 
-	return
-
 	gneiq = []
 	for e in eg:
-		e_neighbours = """
-		MATCH (e:Entity {id: e})--{1}(neighbours:Entity)
-		RETURN DISTINCT neighbours.id AS id
-		"""
-		for ep in e_neighbours:
-			gneiq.append((e, "", ep))
-			if is_relevant(ep):
-				ep_neighbours = """
-				MATCH (ep:Entity {id: ep})--{1}(neighbours:Entity)
-				RETURN DISTINCT neighbours.id AS id
-				"""
-				for e_nei in ep_neighbours:
-					gneiq.append((e_nei, "", ep))
+		print(f"neighbours of {e}")
+		e_neighbours, summary, _ = driver.execute_query("""
+			MATCH (e:Entity {id: $e})-[r]->{1}(neighbours:Entity)
+			RETURN DISTINCT neighbours.id AS id, [e in r | TYPE(e)] AS edge
+			""",
+			e=e,
+		)
+		print(e_neighbours)
+
+		for ep, rel in e_neighbours:
+			# The relationship is returned as a list, but it only has one element
+			gneiq.append([e, rel[0], ep])
+			# How semantic relevance? 
+			# if is_relevant(ep):
+			# 	ep_neighbours = """
+			# 	MATCH (ep:Entity {id: ep})--{1}(neighbours:Entity)
+			# 	RETURN DISTINCT neighbours.id AS id
+			# 	"""
+			# 	for e_nei in ep_neighbours:
+			# 		gneiq.append((e_nei, "", ep))
 	
 	print("Neighbour-based sub-graph:")
 	for path in gneiq:
