@@ -1,4 +1,4 @@
-from neo4j import GraphDatabase
+from post4j import GraphDatabase
 from kg_gen import KGGen, Graph
 import json 
 import os
@@ -33,7 +33,10 @@ def import_graph(graph_path):
 		print("Connected to database")
 
 		print("Clear database")
-		driver.execute_query("MATCH (n) DETACH DELETE n")
+		driver.execute_query(
+			"MATCH (n) DETACH DELETE n",
+			database_=db_base,
+		)
 
 		for i, entity in enumerate(graph.entities):
 			print(f"Write entity {i+1}/{len(graph.entities)}")
@@ -73,6 +76,7 @@ def path_based_subgraph(eg, driver):
 			ORDER BY length(p)
 			""",
 			e1=e1,
+			database_=db_base,
 		)
 		for e2, edges, nodes in neighbours:
 			# if e2 != e1:
@@ -116,6 +120,7 @@ def neighbour_based_subgraph(query, eg, driver):
 			RETURN DISTINCT neighbours.id AS id, [e in r | TYPE(e)] AS edge
 			""",
 			e=e,
+			database_=db_base,
 		)
 		print(e_neighbours)
 
