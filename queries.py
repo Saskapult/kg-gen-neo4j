@@ -1,4 +1,4 @@
-from post4j import GraphDatabase
+from neo4j import GraphDatabase
 from kg_gen import KGGen, Graph
 import json 
 import os
@@ -14,16 +14,21 @@ kg_gen_model = os.getenv("KG_GEN_MODEL", "openai/gpt-4o-mini")
 rag_model = os.getenv("RAG_MODEL", "openai/gpt-4o-mini")
 
 
-# Imports a graph into the database
-def import_graph(graph_path):
+def read_graph(path):
 	graph = None
-	with open(graph_path, "r") as f:
+	with open(path, "r") as f:
 		data = json.load(f)
 		graph = Graph(
 			entities = data["entities"],
 			relations = data["relations"],
 			edges = data["edges"],
 		)
+	return graph
+
+
+# Imports the aggregated graph into the database
+def import_graphs(graphs_path):
+	graph = read_graph(graphs_path + "/aggregated.json")
 	
 	# Precompute embeddings for each entity in G
 	# hg = [st_model.encode(entity) for entity in graph.entities]
@@ -61,6 +66,28 @@ def import_graph(graph_path):
 	print("Graph imported!")
 
 
+# Reads chunk graphs to generate a source index
+# You'll probably want to store this in a database 
+def relation_index(graphs_path):
+	# Dict of relation -> (chunk n, page start, page end)
+	relation_sources = {}
+	for file in os.listdir(graphs_path):
+		if file.startswith("chunk-"):
+			_, n, st, en = file.split(".")[0].split("-")
+			n = int(n)
+			st = int(st)
+			en = int(en)
+			print(f"Chunk {n} sources pages {st} to {en}")
+			graph = read_graph(graphs_path + "/" + file)
+			print(f"\t{len(graph.relations)} relations found")
+			for relation in graph.relations:
+				if relation in relation_sources:
+					relation_sources[relation].append((n, st, en))
+				else:
+					relation_sources[relation] = [(n, st, en)]
+	return relation_sources
+
+
 def path_based_subgraph(eg, driver):
 	gpathq = []
 	segment = []
@@ -87,7 +114,7 @@ def path_based_subgraph(eg, driver):
 				# Interleave lists
 				for n, e in zip(nodes, edges):
 					segment.append(n)
-					segment.append(e)
+					segment.append(e.replace("_", " "))
 				segment.append(nodes[len(nodes)-1])
 
 				print(" -> ".join(segment))
@@ -126,7 +153,7 @@ def neighbour_based_subgraph(query, eg, driver):
 
 		for ep, rel in e_neighbours:
 			# The relationship is returned as a list, but it only has one element
-			gneiq.append([e, rel[0], ep])
+			gneiq.append([e, rel[0].replace("_", " "), ep])
 			# How semantic relevance? 
 			# It seem to be based on the application, see MindMap_revised.py line 638
 			# if is_relevant(ep):
@@ -144,7 +171,7 @@ def neighbour_based_subgraph(query, eg, driver):
 	return gneiq
 
 
-def path_evidence(q, gpathq, k, completion_fn):
+def path_evidence(q, gpathq, k, completion_fn, index):
 	gq_str = "\n".join(["->".join(v) for v in gpathq])
 	# Table 15
 	pself = f"""
@@ -156,7 +183,7 @@ def path_evidence(q, gpathq, k, completion_fn):
 		{q}
 
 		Please rerank the knowledge graph and output at most {k} important and relevant triples for solving the given question. Output the reranked knowledge in the following format:
-		{"\n".join([f"Reranked Triple{i+1}: xxx ——>xxx" for i in range(0, k)])}
+		{"\n".join([f"Reranked Triple{i+1}: xxx -->xxx" for i in range(0, k)])}
 
 		Answer:
 	""".replace("\t", "")
@@ -165,13 +192,32 @@ def path_evidence(q, gpathq, k, completion_fn):
 	print(pself)
 	print()
 
-	gselfq = completion_fn(pself).choices[0].message.content
+	# Extract relationship triples
+	gselfq = []
+	for line in completion_fn(pself).choices[0].message.content.split("\n"):
+		line = line[len("Reranked TripleN:"):]
+		a, r, b = [v.strip() for v in line.split("-->")]
+		gselfq.append((a, r, b))
+
+	# Try to match sources 
+	# Could return this, the raw relations, and the plain language relations
+	sources = []
+	for triple in gselfq:
+		print(f"Trying to source {triple}")
+		line = line[len("Reranked TripleN:"):]
+		if triple in index:
+			s = index[triple]
+			print(f"Relation {triple} comes from chunk(s) {[c for c, _, _ in s]}")
+			sources.append(s)
+		else:
+			print(f"WARN: Unrecongized relation {triple}")
+			sources.append([])
 
 	# Table 16
 	pinference = f"""
 		There are some knowledge graph paths. They follow entity->relationship->entity format.
 
-		{gselfq}
+		{"\n".join([f"Reranked Triple{i+1}: {a} --> {r} --> {b}" for i, (a, r, b) in enumerate(gselfq)])}
 
 		Use the knowledge graph information. Try to convert them to natural language, respectively.
 		Use single quotation marks for entity name and relation name.
@@ -185,16 +231,20 @@ def path_evidence(q, gpathq, k, completion_fn):
 	print()
 
 	# This is gathered to be the output because it is used in table 17
-	a = completion_fn(pinference).choices[0].message.content
+	# Statement extraction
+	a = []
+	# It splits these with a double newline 
+	for line in completion_fn(pinference).choices[0].message.content.split("\n\n"):
+		a.append(line[len("Path-based Evidence 1: "):].strip())
 
 	print("a:")
 	print(a)
 	print()
 
-	return a
+	return a, sources
 
 
-def dalk_query(query, kg, driver, completion_fn):
+def dalk_query(query, kg, driver, completion_fn, index):
 	q = query
 	print(f"query: '{q}'")
 	qg = kg.generate(
@@ -214,7 +264,8 @@ def dalk_query(query, kg, driver, completion_fn):
 	gpathq = path_based_subgraph(eg, driver)
 	gneiq = neighbour_based_subgraph(query, eg, driver)
 	
-	pathstuff = path_evidence(query, gpathq, 5, completion_fn)
+	# Both again, see what happens
+	path_statements, path_sources = path_evidence(query, gpathq + gneiq, 5, completion_fn, index)
 	# Not described in the paper?
 	# MindMap_revised.py uses different prompts than the paper too 
 	neighbourstuff = None 
@@ -222,8 +273,8 @@ def dalk_query(query, kg, driver, completion_fn):
 	panswer = f"""
 		Question: {q}
 
-		You have some medical knowledge information in the following:
-		###{pathstuff}
+		You have some knowledge information in the following:
+		###{"\n".join([f"Path-based Evidence {i+1}: {s}" for i, s in enumerate(path_statements)])}
 		###{neighbourstuff}
 
 		Answer: Let's think step by step:
@@ -238,6 +289,15 @@ def dalk_query(query, kg, driver, completion_fn):
 	print("answer:")
 	print(answer)
 	print()	
+
+	print("sources:")
+	for i, (statement, sources) in enumerate(zip(path_statements, path_sources)):
+		print(f"{i+1}. {statement}")
+		pagesrcs = []
+		for c, st, en in sources:
+			for p in range(st, en+1):
+				pagesrcs.append(str(p))
+		print(f"  - pages {", ".join(set(pagesrcs))}")
 
 	return answer
 
@@ -260,11 +320,15 @@ def main():
 	with GraphDatabase.driver(db_url, auth=(db_user, db_pass)) as driver:
 		driver.verify_connectivity()
 
+		index = relation_index("./graphs")
+		print(index)
+		# exit(0)
+
 		if args.upload:
 			import_graph(args.upload)
 
 		if args.query:
-			dalk_query(args.query, kg, driver, completion_fn)
+			dalk_query(args.query, kg, driver, completion_fn, index)
 
 
 if __name__ == "__main__":

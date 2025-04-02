@@ -178,3 +178,4 @@ scraped_data/*
 cached_graph.json
 neo4j/data
 # post4j.py
+graphs/*
