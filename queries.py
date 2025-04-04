@@ -290,7 +290,9 @@ def dalk_query(query, kg, driver, completion_fn, index):
 	print(answer)
 	print()	
 
+	# Collect page numbers for sources, display alongside rewritten text
 	print("sources:")
+	source_chunks = []
 	for i, (statement, sources) in enumerate(zip(path_statements, path_sources)):
 		print(f"{i+1}. {statement}")
 		pagesrcs = []
@@ -298,6 +300,9 @@ def dalk_query(query, kg, driver, completion_fn, index):
 			for p in range(st, en+1):
 				pagesrcs.append(str(p))
 		print(f"  - pages {", ".join(set(pagesrcs))}")
+
+		# Load chunks? 
+		# Then we can collect them and do explicit verification 
 
 	return answer
 
